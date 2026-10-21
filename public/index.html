@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI-помощник по заявкам</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px;color:#1d1d1f;background:#f6f6f8}
+input{width:49%;padding:10px;margin:0 0 8px;font:inherit;border:1px solid #bbb;border-radius:8px;box-sizing:border-box}
+textarea{width:100%;height:140px;padding:10px;font:inherit;border:1px solid #bbb;border-radius:8px;box-sizing:border-box}
+button{margin-top:10px;padding:10px 22px;font:inherit;background:#2b5cff;color:#fff;border:0;border-radius:8px;cursor:pointer}
+button:disabled{opacity:.5}
+.card{margin-top:20px;background:#fff;border-radius:12px;padding:18px;box-shadow:0 1px 4px #0002}
+.row{padding:8px 0;border-bottom:1px solid #eee}.row:last-child{border:0}
+.k{font-size:12px;color:#777;text-transform:uppercase;letter-spacing:.04em}
+.badge{display:inline-block;padding:2px 10px;border-radius:99px;font-weight:600}
+.b-целевой{background:#d8f5de;color:#14612a}.b-нецелевой{background:#fde0e0;color:#8a1c1c}.b-неясно{background:#fff1c9;color:#7a5600}
+.human{background:#fde0e0;color:#8a1c1c;padding:8px 12px;border-radius:8px;font-weight:600}
+.ok{background:#d8f5de;color:#14612a;padding:8px 12px;border-radius:8px;font-weight:600}
+pre{white-space:pre-wrap;font:inherit;margin:4px 0 0}
+ul{margin:4px 0 0;padding-left:20px}
+.err{color:#b00020;margin-top:14px}
+</style></head><body>
+<h1>AI-помощник по заявкам</h1>
+<p>Вставьте текст заявки (только тестовые данные) и нажмите «Обработать».</p>
+<input id="n" placeholder="Имя (выдуманное)"><input id="c" placeholder="Телефон или email (выдуманные)"><br>
+<textarea id="t" placeholder="Текст заявки"></textarea><br>
+<button id="b">Обработать</button>
+<div id="out"></div>
+<script>
+const $=id=>document.getElementById(id), esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const val=v=>Array.isArray(v)?(v.length?"<ul>"+v.map(x=>"<li>"+esc(typeof x==="object"?JSON.stringify(x):x)+"</li>").join("")+"</ul>":"нет")
+ :(v&&typeof v==="object")?"<ul>"+Object.entries(v).map(([k,x])=>"<li><b>"+esc(k)+":</b> "+esc(Array.isArray(x)?x.join(", "):x)+"</li>").join("")+"</ul>":"<pre>"+esc(v)+"</pre>";
+const row=(k,h)=>'<div class="row"><div class="k">'+k+'</div>'+h+'</div>';
+$("b").onclick=async()=>{
+  const text=$("t").value.trim(), name=$("n").value.trim(), contact=$("c").value.trim(); if(!text||!name||!contact)return;
+  $("b").disabled=true; $("out").innerHTML="<p>Обрабатываю…</p>";
+  try{
+    const r=await fetch("/api/process",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text,name,contact})});
+    const j=await r.json(); if(!r.ok)throw new Error(j.error||"Ошибка"); const c=j.card, bx=j.bitrix;
+    const human=c.needs_human===true||c.needs_human==="true";
+    $("out").innerHTML='<div class="card">'+
+      row("Компания",val(c.company))+row("Суть запроса",val(c.summary))+
+      row("Тип лида",'<span class="badge b-'+esc(c.lead_type)+'">'+esc(c.lead_type)+'</span>')+
+      row("Известные данные",val(c.key_data))+row("Не хватает",val(c.missing_data))+
+      row("Следующий шаг",val(c.next_step))+row("Черновик ответа",val(c.reply_draft))+
+      row("Нужен человек",human?'<div class="human">Да: '+esc(c.human_reason)+'</div>':'<div class="ok">Нет</div>')+
+      row("Что ушло в нейросеть (после маскировки)",'<pre>'+esc(j.sent_to_ai)+'</pre>')+
+      row("Битрикс24",esc(bx.status)+(bx.lead_id?", лид №"+esc(bx.lead_id):"")+(bx.notified===true?", менеджер уведомлён":bx.notified===false?", уведомление не ушло: "+esc(bx.notify_error):"")+(bx.error?": "+esc(bx.error):""))+'</div>';
+  }catch(e){$("out").innerHTML='<p class="err">'+esc(e.message)+'</p>'}
+  $("b").disabled=false;
+};
+</script></body></html>
